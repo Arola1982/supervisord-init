@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# Author: Adam Copley <adam.copley@arola.co.uk>
+
+SUPERVISORD_BIN="/usr/local/bin/supervisord"
+SUPERVISORCTL_BIN="/usr/local/bin/supervisorctl"
+
+CONFIG="/etc/supervisord.conf"
+
+SUPERVISORD="$SUPERVISORD_BIN -c $CONFIG"
+
+SUPERVISORCTL="$SUPERVISORCTL_BIN -c $CONFIG"
+
+PID() {
+        ps -ef | grep "$SUPERVISORD" | grep -v grep | awk '{print $2}'
+}
+
+ORPHANS() {
+                ps -ef | grep $CURRENT_PID | awk '{print $2}'
+}
+
+CURRENT_PID=$(PID)
+
+case $1 in
+        start)
+                if [ $(PID) ] ; then
+                        echo "Supervisord is already running with PID: $(PID)"
+                        exit 1
+                else
+                        echo "Starting Supervisord..."
+                        $SUPERVISORD
+                        if [ $(PID) ] ; then
+                                echo "Supervisord started successfully, running with PID: $(PID)"
+                                exit 0
+                        else
+                                echo "Supervisord failed to start"
+                                exit 1
+                        fi
+                fi
+                ;;
+        stop)
+                if [ $(PID) ] ; then
+                        echo "Stopping Supervisord gracefully..."
+                        $SUPERVISORCTL shutdown
+                        for SEC in 2 4 6 8 10 10 20
+                        do
+                                sleep $SEC
+                                echo "Waiting for $SEC(s) before checking supervisord has stopped..."
+                                if [ $(PID) ] ; then
+                                        echo "Supervisord processes are still running"
+                                else
+                                        echo "Supervisord has successfully stopped"
+                                        echo "Checking for any orphaned processes"
+                                        for CHILD in ${ORPHANS[*]}
+                                        do
+                                                echo "Killing $CHILD"
+                                                kill -9 $CHILD
+                                        done
+                                        exit 0
+                                fi
+                        done
+                fi
+                ;;
+        restart)
+                $0 stop
+                $0 start
+                ;;
+        status)
+                if [ $(PID) ] ; then
+                        echo "Supervisord is running with PID: $(PID)"
+                        exit 0
+                else
+                        echo "Supervisord isn't running..!!"
+                        exit 1
+                fi
+                ;;
+        *)
+                echo "Usage: $0 {start|stop|restart|status}"
+                exit 1
+esac
+
